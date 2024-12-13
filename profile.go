@@ -25,6 +25,7 @@ const defaultColor = "lightgray"
 // the ~/.moprc file.
 type Profile struct {
 	Tickers       []string // List of stock tickers to display.
+	Owned         map[string]float64  // Stocks owned.
 	MarketRefresh int      // Time interval to refresh market data.
 	QuotesRefresh int      // Time interval to refresh stock quotes.
 	SortColumn    int      // Column number by which we sort stock quotes.

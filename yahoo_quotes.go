@@ -46,6 +46,8 @@ type Stock struct {
 	Direction  int    // -1 when change is < $0, 0 when change is = $0, 1 when change is > $0.
 	PreOpen    string `json:"preMarketChangePercent,omitempty"`
 	AfterHours string `json:"postMarketChangePercent,omitempty"`
+	Own        string // Number of stocks owned.
+	Value      string // Current value of stocks owned.
 }
 
 // Quotes stores relevant pointers as well as the array of stock quotes for

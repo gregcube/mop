@@ -53,6 +53,8 @@ func NewLayout() *Layout {
 		{10, `LastTrade`, `Last`, currency},
 		{10, `Change`, `Change`, currency},
 		{10, `ChangePct`, `Change%`, last},
+		{10, `Own`, `Own`, integer},
+		{13, `Value`, `Value`, currency},
 		{10, `Open`, `Open`, currency},
 		{10, `Low`, `Low`, currency},
 		{10, `High`, `High`, currency},
@@ -171,14 +173,25 @@ func (layout *Layout) prettify(quotes *Quotes) []Stock {
 		for _, column := range layout.columns {
 			// ex. value = stock.Change
 			value := reflect.ValueOf(&stock).Elem().FieldByName(column.name).String()
+
+			switch column.name {
+			case `Own`:
+				value = strconv.FormatFloat(quotes.profile.Owned[stock.Ticker], 'f', 2, 64)
+			case `Value`:
+				last, err := strconv.ParseFloat(stock.LastTrade, 64)
+				if err != nil { last = 0.00 }
+				value = fmt.Sprintf("%.2f", last * quotes.profile.Owned[stock.Ticker])
+			case `Ticker`:
+				if (0 - tickerWidth) < column.width {
+					column.width = (0 - tickerWidth)
+				}
+			}
+
 			if column.formatter != nil {
 				// ex. value = currency(value)
 				value = column.formatter(value, stock.Currency)
 			}
-			// ex. pretty[i].Change = layout.pad(value, 10)
-			if column.name == `Ticker` && (0-tickerWidth) < column.width {
-				column.width = (0 - tickerWidth)
-			}
+
 			reflect.ValueOf(&pretty[i]).Elem().FieldByName(column.name).SetString(layout.pad(value, column.width))
 		}
 	}
@@ -240,7 +253,7 @@ func buildQuotesTemplate() *template.Template {
 
 
 <header>{{.Header}}</>
-{{range.Stocks}}{{if eq .Direction 1}}<gain>{{else if eq .Direction -1}}<loss>{{end}}{{.Ticker}}{{.LastTrade}}{{.Change}}{{.ChangePct}}{{.Open}}{{.Low}}{{.High}}{{.Low52}}{{.High52}}{{.Volume}}{{.AvgVolume}}{{.PeRatio}}{{.Dividend}}{{.Yield}}{{.MarketCap}}{{.PreOpen}}{{.AfterHours}}</>
+{{range.Stocks}}{{if eq .Direction 1}}<gain>{{else if eq .Direction -1}}<loss>{{end}}{{.Ticker}}{{.LastTrade}}{{.Change}}{{.ChangePct}}{{.Own}}{{.Value}}{{.Open}}{{.Low}}{{.High}}{{.Low52}}{{.High52}}{{.Volume}}{{.AvgVolume}}{{.PeRatio}}{{.Dividend}}{{.Yield}}{{.MarketCap}}{{.PreOpen}}{{.AfterHours}}</>
 {{end}}`
 
 	return template.Must(template.New(`quotes`).Parse(markup))
@@ -343,14 +356,20 @@ func currency(str ...string) string {
 	if ok {
 		symbol = c
 	}
+
 	if str[0] == `N/A` || len(str[0]) == 0 {
 		return `-`
 	}
+
+	var parts []string
+
 	if sign := str[0][0:1]; sign == `+` || sign == `-` {
-		return sign + symbol + str[0][1:]
+		parts = strings.Split(str[0][1:], ".")
+		return sign + symbol + addCommas(parts[0]) + "." + parts[1]
 	}
 
-	return symbol + str[0]
+	parts = strings.Split(str[0], ".")
+	return symbol + addCommas(parts[0]) + "." + parts[1]
 }
 
 // Returns percent value truncated at 2 decimal points.
@@ -395,4 +414,29 @@ func integer(str ...string) string {
 		}
 	}
 	return str[0]
+}
+
+// Add commas to a string that is formatted by currency.
+//------------------------------------------------------------------------------
+func addCommas(s string) string {
+	rev := reverse(s)
+	var parts []string
+
+	for i := 0; i < len(rev); i += 3 {
+		end := i + 3;
+		if end > len(rev) { end = len(rev) }
+		parts = append(parts, rev[i:end])
+	}
+
+	return reverse(strings.Join(parts, ","))
+}
+
+// Reverse a string. Helper function used when adding commas.
+// -----------------------------------------------------------------------------
+func reverse(s string) string {
+	var rev []rune;
+	for _, r := range s {
+		rev = append([]rune{r}, rev...)
+	}
+	return string(rev)
 }
