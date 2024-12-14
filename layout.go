@@ -53,8 +53,8 @@ func NewLayout() *Layout {
 		{10, `LastTrade`, `Last`, currency},
 		{10, `Change`, `Change`, currency},
 		{10, `ChangePct`, `Change%`, last},
-		{10, `Own`, `Own`, integer},
-		{13, `Value`, `Value`, currency},
+		{10, `Qty`, `Qty`, integer},
+		{13, `QtyValue`, `Market Value`, currency},
 		{10, `Open`, `Open`, currency},
 		{10, `Low`, `Low`, currency},
 		{10, `High`, `High`, currency},
@@ -101,12 +101,17 @@ func (layout *Layout) Quotes(quotes *Quotes) string {
 		return err // then simply return the error string.
 	}
 
+	// Process stock quantities and values.
+	totalMarketValue := calculateQty(quotes)
+
 	vars := struct {
 		Now    string  // Current timestamp.
+		MarketValue string
 		Header string  // Formatted header line.
 		Stocks []Stock // List of formatted stock quotes.
 	}{
 		time.Now().Format(`3:04:05pm ` + zonename),
+		currency(fmt.Sprintf("%.2f", totalMarketValue), ""),
 		layout.Header(quotes.profile),
 		layout.prettify(quotes),
 	}
@@ -115,6 +120,24 @@ func (layout *Layout) Quotes(quotes *Quotes) string {
 	layout.quotesTemplate.Execute(buffer, vars)
 
 	return buffer.String()
+}
+
+// Calculate values from stock quantities.
+func calculateQty(quotes *Quotes) float64 {
+	var totalValue float64 = 0
+
+	for i, stock := range quotes.stocks {
+		qty := quotes.profile.Owned[stock.Ticker]
+
+		last, err := strconv.ParseFloat(stock.LastTrade, 64)
+		if err != nil { last = 0.00 }
+
+		quotes.stocks[i].Qty = strconv.FormatFloat(qty, 'f', 2, 64)
+		quotes.stocks[i].QtyValue = fmt.Sprintf("%.2f", last * qty)
+		totalValue += last * qty
+	}
+
+	return totalValue
 }
 
 // Header iterates over column titles and formats the header line. The
@@ -173,25 +196,13 @@ func (layout *Layout) prettify(quotes *Quotes) []Stock {
 		for _, column := range layout.columns {
 			// ex. value = stock.Change
 			value := reflect.ValueOf(&stock).Elem().FieldByName(column.name).String()
-
-			switch column.name {
-			case `Own`:
-				value = strconv.FormatFloat(quotes.profile.Owned[stock.Ticker], 'f', 2, 64)
-			case `Value`:
-				last, err := strconv.ParseFloat(stock.LastTrade, 64)
-				if err != nil { last = 0.00 }
-				value = fmt.Sprintf("%.2f", last * quotes.profile.Owned[stock.Ticker])
-			case `Ticker`:
-				if (0 - tickerWidth) < column.width {
-					column.width = (0 - tickerWidth)
-				}
-			}
-
 			if column.formatter != nil {
 				// ex. value = currency(value)
 				value = column.formatter(value, stock.Currency)
 			}
-
+			if column.name == `Ticker` && (0 - tickerWidth) < column.width {
+				column.width = (0 - tickerWidth)
+			}
 			reflect.ValueOf(&pretty[i]).Elem().FieldByName(column.name).SetString(layout.pad(value, column.width))
 		}
 	}
@@ -253,7 +264,8 @@ func buildQuotesTemplate() *template.Template {
 
 
 <header>{{.Header}}</>
-{{range.Stocks}}{{if eq .Direction 1}}<gain>{{else if eq .Direction -1}}<loss>{{end}}{{.Ticker}}{{.LastTrade}}{{.Change}}{{.ChangePct}}{{.Own}}{{.Value}}{{.Open}}{{.Low}}{{.High}}{{.Low52}}{{.High52}}{{.Volume}}{{.AvgVolume}}{{.PeRatio}}{{.Dividend}}{{.Yield}}{{.MarketCap}}{{.PreOpen}}{{.AfterHours}}</>
+{{.MarketValue}}
+{{range.Stocks}}{{if eq .Direction 1}}<gain>{{else if eq .Direction -1}}<loss>{{end}}{{.Ticker}}{{.LastTrade}}{{.Change}}{{.ChangePct}}{{.Qty}}{{.QtyValue}}{{.Open}}{{.Low}}{{.High}}{{.Low52}}{{.High52}}{{.Volume}}{{.AvgVolume}}{{.PeRatio}}{{.Dividend}}{{.Yield}}{{.MarketCap}}{{.PreOpen}}{{.AfterHours}}</>
 {{end}}`
 
 	return template.Must(template.New(`quotes`).Parse(markup))
