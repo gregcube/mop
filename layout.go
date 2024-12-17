@@ -101,17 +101,12 @@ func (layout *Layout) Quotes(quotes *Quotes) string {
 		return err // then simply return the error string.
 	}
 
-	// Process stock quantities and values.
-	totalMarketValue := calculateQty(quotes)
-
 	vars := struct {
 		Now    string  // Current timestamp.
-		MarketValue string
 		Header string  // Formatted header line.
 		Stocks []Stock // List of formatted stock quotes.
 	}{
 		time.Now().Format(`3:04:05pm ` + zonename),
-		currency(fmt.Sprintf("%.2f", totalMarketValue), ""),
 		layout.Header(quotes.profile),
 		layout.prettify(quotes),
 	}
@@ -120,24 +115,6 @@ func (layout *Layout) Quotes(quotes *Quotes) string {
 	layout.quotesTemplate.Execute(buffer, vars)
 
 	return buffer.String()
-}
-
-// Calculate values from stock quantities.
-func calculateQty(quotes *Quotes) float64 {
-	var totalValue float64 = 0
-
-	for i, stock := range quotes.stocks {
-		qty := quotes.profile.Owned[stock.Ticker]
-
-		last, err := strconv.ParseFloat(stock.LastTrade, 64)
-		if err != nil { last = 0.00 }
-
-		quotes.stocks[i].Qty = strconv.FormatFloat(qty, 'f', 2, 64)
-		quotes.stocks[i].QtyValue = fmt.Sprintf("%.2f", last * qty)
-		totalValue += last * qty
-	}
-
-	return totalValue
 }
 
 // Header iterates over column titles and formats the header line. The
@@ -168,6 +145,7 @@ func (layout *Layout) TotalColumns() int {
 // -----------------------------------------------------------------------------
 func (layout *Layout) prettify(quotes *Quotes) []Stock {
 	pretty := make([]Stock, len(quotes.stocks))
+	totalValue := quotes.calculateQty()
 
 	//
 	// Iterate over the list of stocks to get the longest ticker name (some tickers will exceed the allotted 10 char length for the Ticker column)
@@ -218,6 +196,9 @@ func (layout *Layout) prettify(quotes *Quotes) []Stock {
 		}
 	}
 
+	market := quotes.market
+	market.TotalValue = currency(fmt.Sprintf("%.2f", totalValue), "")
+
 	if layout.sorter == nil { // Initialize sorter on first invocation.
 		layout.sorter = NewSorter(profile)
 	}
@@ -252,7 +233,8 @@ func (layout *Layout) pad(str string, width int) string {
 func buildMarketTemplate() *template.Template {
 	markup := `<tag>Dow</> {{.Dow.change}} ({{.Dow.percent}}) at {{.Dow.latest}} <tag>S&P 500</> {{.Sp500.change}} ({{.Sp500.percent}}) at {{.Sp500.latest}} <tag>NASDAQ</> {{.Nasdaq.change}} ({{.Nasdaq.percent}}) at {{.Nasdaq.latest}}
 <tag>Tokyo</> {{.Tokyo.change}} ({{.Tokyo.percent}}) at {{.Tokyo.latest}} <tag>HK</> {{.HongKong.change}} ({{.HongKong.percent}}) at {{.HongKong.latest}} <tag>London</> {{.London.change}} ({{.London.percent}}) at {{.London.latest}} <tag>Frankfurt</> {{.Frankfurt.change}} ({{.Frankfurt.percent}}) at {{.Frankfurt.latest}} {{if .IsClosed}}<right>U.S. markets closed</right>{{end}}
-<tag>10-Year Yield</> {{.Yield.latest}} ({{.Yield.change}}) <tag>Euro</> ${{.Euro.latest}} ({{.Euro.change}}) <tag>Yen</> ¥{{.Yen.latest}} ({{.Yen.change}}) <tag>Oil</> ${{.Oil.latest}} ({{.Oil.change}}) <tag>Gold</> ${{.Gold.latest}} ({{.Gold.change}})`
+<tag>10-Year Yield</> {{.Yield.latest}} ({{.Yield.change}}) <tag>Euro</> ${{.Euro.latest}} ({{.Euro.change}}) <tag>Yen</> ¥{{.Yen.latest}} ({{.Yen.change}}) <tag>Oil</> ${{.Oil.latest}} ({{.Oil.change}}) <tag>Gold</> ${{.Gold.latest}} ({{.Gold.change}})
+<tag>Market Value Total</> {{.TotalValue}}`
 
 	return template.Must(template.New(`market`).Parse(markup))
 }
@@ -264,7 +246,6 @@ func buildQuotesTemplate() *template.Template {
 
 
 <header>{{.Header}}</>
-{{.MarketValue}}
 {{range.Stocks}}{{if eq .Direction 1}}<gain>{{else if eq .Direction -1}}<loss>{{end}}{{.Ticker}}{{.LastTrade}}{{.Change}}{{.ChangePct}}{{.Qty}}{{.QtyValue}}{{.Open}}{{.Low}}{{.High}}{{.Low52}}{{.High52}}{{.Volume}}{{.AvgVolume}}{{.PeRatio}}{{.Dividend}}{{.Yield}}{{.MarketCap}}{{.PreOpen}}{{.AfterHours}}</>
 {{end}}`
 

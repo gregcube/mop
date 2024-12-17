@@ -274,6 +274,23 @@ func (quotes *Quotes) parse(body []byte) *Quotes {
 	return quotes
 }
 
+func (quotes *Quotes) calculateQty() float64 {
+	var totalValue float64 = 0
+
+	for i, stock := range quotes.stocks {
+		qty := quotes.profile.Owned[stock.Ticker]
+
+		last, err := strconv.ParseFloat(stock.LastTrade, 64)
+		if err != nil { last = 0.00 }
+
+		quotes.stocks[i].Qty = strconv.FormatFloat(qty, 'f', 2, 64)
+		quotes.stocks[i].QtyValue = fmt.Sprintf("%.2f", last * qty)
+		totalValue += last * qty
+	}
+
+	return totalValue
+}
+
 // -----------------------------------------------------------------------------
 func sanitize(body []byte) []byte {
 	return bytes.Replace(bytes.TrimSpace(body), []byte{'"'}, []byte{}, -1)

@@ -34,6 +34,7 @@ type Market struct {
 	url       string // URL with symbols to fetch data
 	cookies   string // cookies for auth
 	crumb     string // crumb for the cookies, to be applied as a query param
+	TotalValue string
 }
 
 // Returns new initialized Market struct.
